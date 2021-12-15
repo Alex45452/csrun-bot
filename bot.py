@@ -3,9 +3,12 @@ import logging
 import ssl
 import websockets
 import traceback
-import requests
 import json
 import time
+import random
+import httpx
+import requests_async as requests
+# import requests
 import datetime
 import string
 from websockets.client import WebSocketClientProtocol
@@ -18,9 +21,10 @@ from websockets.client import WebSocketClientProtocol
 
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('websockets')
-logger.setLevel(logging.DEBUG)
-TOKEN = 'secured'
+client = httpx.AsyncClient()
+# logger = logging.getLogger('websockets')
+# logger.setLevel(logging.DEBUG)
+TOKEN = 'secret'
 ADMINS = [5,6]
 PROMO_URL = 'https://api.csgorun.gg/discount'
 MEDKIT_URL = 'https://api.csgorun.gg/use-medkit'
@@ -45,14 +49,39 @@ message_2 = """
 {"method":1,"params":{"channel":"c-ru"},"id":14}
 {"method":1,"params":{"channel":"medkit"},"id":15}
 """
-def get_inv():
-    response = requests.get(url='https://api.csgorun.gg/current-state?montaznayaPena=null',headers={'authorization': TOKEN})
+
+def timer(func):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        time_exec = end - start
+        print(f"{func.__name__}: {time_exec:.3f}")
+        return result
+    return wrapper
+
+def timer_async(func):
+    async def wrapper(*args, **kwargs):
+        start = time.time()
+        result = await func(*args, **kwargs)
+        end = time.time()
+        time_exec = end - start
+        print(f"{func.__name__}: {time_exec:.3f}")
+        return result
+    return wrapper
+
+
+
+@timer_async
+async def get_inv():
+    response = await client.get(url='https://api.csgorun.gg/current-state?montaznayaPena=null',headers={'authorization': TOKEN})
     inv = []
     for item in response.json()['data']['user']['items']:
         inv.append(item['id'])
     return inv
 
-def check_promo(msg):
+@timer_async
+async def check_promo(msg):
     p = False
     if len(msg) >= 8 and len(msg) <= 12: 
         p = True
@@ -60,19 +89,21 @@ def check_promo(msg):
             if not sym.isdigit() and sym not in string.ascii_lowercase:
                 p = False
     if p == True:
-        use_promo(msg)
+        await use_promo(msg)
 
-def use_promo(promo):
+@timer_async
+async def use_promo(promo):
     try:
-        response = requests.post(url=PROMO_URL,json={'code':promo,'token':'null'},headers={'authorization':TOKEN})
+        response = await client.post(url=PROMO_URL,json={'code':promo,'token':'null'},headers={'authorization':TOKEN})
         logging.info(f'{promo} promo sent!!!! \a')
-        if response.ok:
+        if response.status_code == httpx.codes.OK:
             logging.info('+0.25')
         else:
             logging.info('promik gavno')
     except:
         traceback.print_exc()
 
+@timer
 def inv_header(msg):
     for added in msg['result']['data']['data']['newItems']:
         inventory.append(added['id'])
@@ -80,88 +111,91 @@ def inv_header(msg):
         inventory.remove(removed)
     logging.info(f'inventory is {inventory}')
 
+@timer
 def win_header(msg):
     cur_balance = msg['result']['data']['data']['balance']
     inventory.append(msg['result']['data']['data']['userItem']['id'])
     logging.info(f'inventory is {inventory}')
     logging.info(f'balance is {cur_balance}')    
 
+@timer
 def balance_header(msg):
     cur_balance = msg['result']['data']['data']['balance']
     logging.info(f'balance is {cur_balance}')
 
+@timer_async
 async def make_bet(cost):
-    wish_id = [choose_wish(cost)]
-    await asyncio.sleep(1)
-    inv = [exchange(wish_id)]
-    await asyncio.sleep(2)
-    response = requests.post(url='https://api.csgorun.gg/make-bet',json={'userItemIds':inv,'auto':'1.20'},headers={'authorization':TOKEN})
+    wish_id = [await choose_wish(cost)]
+    inv = [await exchange(wish_id)]
+    await asyncio.sleep(4.5)
+    response = await client.post(url='https://api.csgorun.gg/make-bet',json={'userItemIds':inv,'auto':'1.20'},headers={'authorization':TOKEN})
     tries = 0
-    while not response.ok and tries < 5:    
-        inv = get_inv()
-        logging.info(f'bet isnt made, code {response},trying again in 1,try:{tries}')
-        await asyncio.sleep(1)
-        response = requests.post(url='https://api.csgorun.gg/make-bet',json={'userItemIds':inv,'auto':'1.20'},headers={'authorization':TOKEN})
+    while not response.status_code == httpx.codes.OK and tries < 10:    
+        logging.info(f'bet isnt made, code {response.text},trying again in 1,try:{tries}')
+        response = await client.post(url='https://api.csgorun.gg/make-bet',json={'userItemIds':inv,'auto':'1.20'},headers={'authorization':TOKEN})
         tries += 1
-    if response.ok:
-        logging.info(f"bet made, success = {response.json()['success']}")
+        await asyncio.sleep(1)
+    if response.status_code == httpx.codes.OK and response.json()['success']:
+        logging.info(f"bet made, success = {response.json()['success']}, tries: {tries}")
     else:
         logging.info(f'vse huinya(((( T_T')
-        exit
+        exit()
 
-
-def choose_wish(cost):
-    response = requests.get(url = "https://cloud.this.team/csgo/items.json?v=1638190309928")
-    if response.ok:
-        costs = [cost-0.01*i for i in range(30)]
+@timer_async
+async def choose_wish(cost):
+    response = await client.get(url = "https://cloud.this.team/csgo/items.json?v=1638190309928")
+    if response.status_code == httpx.codes.OK:
+        costs = [cost-0.01*i for i in range(300)]
         items = {}
         for el in response.json()['data']:
-            if el[6] in costs:
+            if cost >= el[6] > cost-3:
                 items[el[6]] = el[0]
         for cst in costs:
             if items.get(cst):
                 logging.info(f'wish id,cost: {items[cst],cst}')
                 return items[cst]
         logging.info(f'wish code: {response}, no vse huinya')
+        exit()
     else:
         logging.info(f'wish code: {response}')
 
-def exchange(wish_id):
+@timer_async
+async def exchange(wish_id):
     global inventory
     for i in range(5):
         try:
-            response = requests.post(url=EXCHANGE_URL,json={'userItemIds':inventory,'wishItemIds':wish_id},headers={'authorization':TOKEN}) 
-            if response.ok:
-                logging.info('changed')
+            response = await client.post(url=EXCHANGE_URL,json={'userItemIds':inventory,'wishItemIds':wish_id},headers={'authorization':TOKEN}) 
+            if response.status_code == httpx.codes.OK:
+                logging.info(f'changed, {i} try')
                 return response.json()['data']['userItems']['newItems'][0]['id']
             else:
-                logging.info(f'change is not success {response,inventory}, trying again in 2')
-                inventory = get_inv()
-                time.sleep(2)
+                logging.info(f'change is not success {response,inventory}, {i} try in 1')
         except:
             traceback.print_exc()
 
-def use_medkit():
+@timer_async
+async def use_medkit():
     try:
-        time.sleep(2)
-        response = requests.post(url=MEDKIT_URL,headers={'authorization':TOKEN})
-        if response.ok:
+        await asyncio.sleep(2)
+        response = await client.post(url=MEDKIT_URL,headers={'authorization':TOKEN})
+        if response.status_code == httpx.codes.OK:
             logging.info('medkit used')
         else:
             logging.info('medkit didnt used')
     except:
         traceback.print_exc()
 
-
-
-async def consumer_handler(websocket: WebSocketClientProtocol) -> None:
+@timer_async
+async def consumer_handler(websocket):
     async for message in websocket:
         for line in message.split('\n'):
             if len(line) > 10:
-                logging.info(len(asyncio.all_tasks()))
+                logging.info(f'{len(asyncio.all_tasks())}')
                 asyncio.create_task(check_message(line))
 
-async def consume(message1: dict,message2: list,hostname: str,port: int) -> None:
+@timer_async
+async def consume(message2: list,hostname: str,port: int) -> None:
+    message1 = json.dumps({"params":{"token":await get_started()},"id":1})
     websocket_resource_url = f"wss://{hostname}:{port}/connection/websocket"
     while True:
         async with websockets.connect(websocket_resource_url,ssl=ssl._create_unverified_context()) as websocket:
@@ -170,18 +204,19 @@ async def consume(message1: dict,message2: list,hostname: str,port: int) -> None
                 await websocket.recv()
                 await websocket.send(message2)
                 await websocket.recv()
-                await consumer_handler(websocket) 
+                await consumer_handler(websocket)
             except websockets.ConnectionClosed:
                 traceback.print_exc()
                 continue
 
+@timer_async
 async def check_message(msg: str) -> None:
     msg = json.loads(msg)
     try:
         channel = msg['result']['channel']
         if channel == "c-ru":
             if msg['result']['data']['data']['p']['u']['r'] in ADMINS:
-                check_promo(msg['result']['data']['data']['p']['c'])
+                await check_promo(msg['result']['data']['data']['p']['c'])
         elif channel == "game":
             if msg['result']['data']['data']['type'] == 'c':
                 await check_crush(msg)
@@ -192,11 +227,13 @@ async def check_message(msg: str) -> None:
         elif channel == "u-ub#17787":
             win_header(msg)
         elif channel == 'medkit':
-            use_medkit()
+            #await use_medkit()
+            pass
     except:
-        logging.info(f'pizdec: {msg}',datetime.datetime.now())
+        logging.info(f'pizdec: {msg} {datetime.datetime.now()}')
         traceback.print_exc()
 
+@timer_async
 async def check_crush(msg):
     global prev_crashes
     global cur_balance
@@ -209,13 +246,14 @@ async def check_crush(msg):
     elif max(prev_crashes[:2]) < 1.20 and cur_balance >= 0.25:
         await make_bet(4)
 
-def get_started():
+@timer_async
+async def get_started():
     global prev_crashes
     global cur_balance
     global inventory
     try:
-        response = requests.get(url='https://api.csgorun.gg/current-state?montaznayaPena=null',headers={'authorization': TOKEN})
-        if response.ok:
+        response = await client.get(url='https://api.csgorun.gg/current-state?montaznayaPena=null',headers={'authorization': TOKEN})
+        if response.status_code == httpx.codes.OK:
             cur_balance = response.json()['data']['user']['balance']
             crashes = response.json()['data']['game']['history']
             crashes.sort(key = lambda x: list(x.values())[0],reverse = True)
@@ -230,11 +268,12 @@ def get_started():
         traceback.print_exc()
 
 if __name__ == '__main__':
-    logger.addHandler(logging.StreamHandler())
+    # logger.addHandler(logging.StreamHandler())
+    # TOKEN = input('JWT eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTc3ODcsImlhdCI6MTYzODExMzk1NywiZXhwIjoxNjM4OTc3OTU3fQ.mYGvyrnZqnPEcM5sDv6Pln1qTu892QDlN0ziMIOu2oo  ')
     while True:
         try:
-            message_1 = json.dumps({"params":{"token":get_started()},"id":1})
-            asyncio.run(consume(message1=message_1,message2=message_2,hostname='ws.csgorun.gg',port=443))
+            asyncio.run(consume(message2=message_2,hostname='ws.csgorun.gg',port=443))
             logging.info('vsyo govno')
+            
         except:
             traceback.print_exc()
