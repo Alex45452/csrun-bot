@@ -1,0 +1,4 @@
+httpx==0.21.1
+httpx_socks==0.7.2
+requests==2.26.0
+websockets==10.1
