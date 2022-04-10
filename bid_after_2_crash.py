@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 client = httpx.AsyncClient()
 # logger = logging.getLogger('websockets')
 # logger.setLevel(logging.DEBUG)
-TOKEN = 'JWT eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTkxNDAwMiwiaWF0IjoxNjQ5Mjc4MTQyLCJleHAiOjE2NTAxNDIxNDJ9.EINacQZl3gU2ao5OhFacWaCCUapor9t4cY0Gh6qK2yo'
+TOKEN = 'JWT eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjA0MjE4MywiaWF0IjoxNjQ5MjgwMDM5LCJleHAiOjE2NTAxNDQwMzl9.Ai0ddIdRGIr8N0pYIha8L6g9pWXak5Q2ONg4zeY0-3o'
 ADMINS = [5,6]
 PROMO_URL = 'https://api.csgorun.run/discount'
 MEDKIT_URL = 'https://api.csgorun.run/use-medkit'
