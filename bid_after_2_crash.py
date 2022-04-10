@@ -67,7 +67,7 @@ def timer_async(func):
         result = await func(*args, **kwargs)
         end = time.time()
         time_exec = end - start
-        print(f"{func.__name__}: {time_exec:.3f}")
+        print(f"{func.__name__}: {time_exec:.3f}   {datetime.datetime.now()}")
         return result
     return wrapper
 
@@ -91,19 +91,19 @@ async def check_promo(msg):
             if not sym.isdigit() and sym not in string.ascii_lowercase:
                 p = False
     if p == True:
-        await use_promo(msg)
+        logging.INFO(f"promo: {msg}\a")
 
-@timer_async
-async def use_promo(promo):
-    try:
-        response = await client.post(url=PROMO_URL,json={'code':promo,'token':'null'},headers={'authorization':TOKEN})
-        logging.info(f'{promo} promo sent!!!! \a')
-        if response.status_code == httpx.codes.OK:
-            logging.info('+0.25')
-        else:
-            logging.info('promik gavno')
-    except:
-        traceback.print_exc()
+# @timer_async
+# async def use_promo(promo):
+#     try:
+#         response = await client.post(url=PROMO_URL,json={'code':promo,'token':'null'},headers={'authorization':TOKEN})
+#         logging.info(f'{promo} promo sent!!!! \a')
+#         if response.status_code == httpx.codes.OK:
+#             logging.info('+0.25')
+#         else:
+#             logging.info(f'promik gavno {response.text(),response.json()}')
+#     except:
+#         traceback.print_exc()
 
 @timer_async
 async def inv_header(msg):
@@ -147,8 +147,8 @@ async def make_bet(cost):
     if response.status_code == httpx.codes.OK and response.json()['success']:
         logging.info(f"bet made, success = {response.json()['success']}, tries: {tries}")
     else:
-        logging.info(f'vse huinya(((( T_T')
-        exit()
+        logging.info(f'vse huinya(((( T_T {time_left}')
+        exit(1)
 
 @timer_async
 async def choose_wish(cost):
@@ -225,7 +225,7 @@ async def consume(message2,hostname: str,port: int) -> None:
                 await consumer_handler(websocket)
             except websockets.ConnectionClosed:
                 traceback.print_exc()
-                continue
+                exit()
 
 # @timer_async
 async def check_message(msg: str) -> None:
@@ -233,8 +233,9 @@ async def check_message(msg: str) -> None:
     try:
         channel = msg['result']['channel']
         if channel == "c-ru":
-            if msg['result']['data']['data']['p']['u']['r'] in ADMINS:
-                await check_promo(msg['result']['data']['data']['p']['c'])
+            if msg['result']['data']['data']['p']['u'] == type({1:1}) and msg['result']['data']['data']['p']['u'].get('r'):
+                if msg['result']['data']['data']['p']['u']['r'] in ADMINS:
+                    await check_promo(msg['result']['data']['data']['p']['c'])
         elif channel == "game":
             if msg['result']['data']['data']['type'] == 'c':
                 await check_crush(msg)
@@ -259,9 +260,8 @@ async def check_crush(msg):
     for i in range(len(prev_crashes)-1,0,-1):
         prev_crashes[i] = prev_crashes[i-1]
     prev_crashes[0] = crush
-
-    if max(prev_crashes[:2]) < 1.20 and (cur_balance >= 0.25 or inventory):
-        await make_bet(0.25)
+    if max(prev_crashes[:2]) < 1.20 and (cur_balance >= 2 or inventory):
+        await make_bet(2)
 
 @timer_async
 async def get_started():
@@ -295,7 +295,8 @@ if __name__ == '__main__':
                 # loop.close()
                 asyncio.run(consume(message2=message_2,hostname='ws.csgorun.run',port=443))
                 logging.info('vsyo govno')
-                
+                client.aclose()
+                client = httpx.AsyncClient()
             except:
                 traceback.print_exc()
     finally:
