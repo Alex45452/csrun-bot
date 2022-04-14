@@ -1,15 +1,12 @@
 import asyncio
-from glob import glob
 import logging
+import random
 import ssl
 import websockets
 import traceback
 import json
 import time
-# import random
 import httpx
-# import requests_async as requests
-# import requests
 import datetime
 import string
 
@@ -22,10 +19,11 @@ import string
 
 
 logging.basicConfig(level=logging.INFO)
-client = httpx.AsyncClient()
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36"
+client = httpx.AsyncClient(headers={"user-agent":user_agent})
 # logger = logging.getLogger('websockets')
 # logger.setLevel(logging.DEBUG)
-TOKEN = 'JWT eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjA0MjE4MywiaWF0IjoxNjQ5MjgwMDM5LCJleHAiOjE2NTAxNDQwMzl9.Ai0ddIdRGIr8N0pYIha8L6g9pWXak5Q2ONg4zeY0-3o'
+TOKEN = 'JWT eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTkxNDAwMiwiaWF0IjoxNjQ5Mjc4MTQyLCJleHAiOjE2NTAxNDIxNDJ9.EINacQZl3gU2ao5OhFacWaCCUapor9t4cY0Gh6qK2yo'
 ADMINS = [5,6]
 PROMO_URL = 'https://api.csgorun.run/discount'
 MEDKIT_URL = 'https://api.csgorun.run/use-medkit'
@@ -130,7 +128,7 @@ async def balance_header(msg):
     logging.info(f'balance is {cur_balance}')
 
 @timer_async
-async def make_bet(cost):
+async def make_bet(cost,crush):
     start = time.time()
     wish_id = [await choose_wish(cost)]
     inv = [await exchange(wish_id)]
@@ -140,7 +138,7 @@ async def make_bet(cost):
     time_left = time.time() - start
     while not response.status_code == httpx.codes.OK and tries < 10 and time_left < 15:    
         logging.info(f'bet isnt made, code {response.text},trying again in 1,try:{tries}')
-        response = await client.post(url='https://api.csgorun.run/make-bet',json={'userItemIds':inv,'auto':'1.20'},headers={'authorization':TOKEN})
+        response = await client.post(url='https://api.csgorun.run/make-bet',json={'userItemIds':inv,'auto':crush},headers={'authorization':TOKEN})
         tries += 1
         time_left = time.time() - start
         await asyncio.sleep(1)
@@ -216,7 +214,7 @@ async def consume(message2,hostname: str,port: int) -> None:
     message1 = json.dumps({"params":{"token":await get_started()},"id":1})
     websocket_resource_url = f"wss://{hostname}:{port}/connection/websocket"
     while True:
-        async with websockets.connect(websocket_resource_url,ssl = ssl._create_unverified_context()) as websocket:
+        async with websockets.connect(websocket_resource_url,ssl = ssl._create_unverified_context(),extra_headers = {'user-agent':user_agent}) as websocket:
             try:
                 await websocket.send(message1)
                 await websocket.recv()
@@ -233,9 +231,10 @@ async def check_message(msg: str) -> None:
     try:
         channel = msg['result']['channel']
         if channel == "c-ru":
-            if msg['result']['data']['data']['p']['u'] == type({1:1}) and msg['result']['data']['data']['p']['u'].get('r'):
-                if msg['result']['data']['data']['p']['u']['r'] in ADMINS:
-                    await check_promo(msg['result']['data']['data']['p']['c'])
+            # if msg['result']['data']['data']['p']['u'] == type({1:1}) and msg['result']['data']['data']['p']['u'].get('r'):
+            #     if msg['result']['data']['data']['p']['u']['r'] in ADMINS:
+            #         await check_promo(msg['result']['data']['data']['p']['c'])
+            pass
         elif channel == "game":
             if msg['result']['data']['data']['type'] == 'c':
                 await check_crush(msg)
@@ -260,8 +259,11 @@ async def check_crush(msg):
     for i in range(len(prev_crashes)-1,0,-1):
         prev_crashes[i] = prev_crashes[i-1]
     prev_crashes[0] = crush
-    if max(prev_crashes[:2]) < 1.20 and (cur_balance >= 2 or inventory):
-        await make_bet(2)
+    if max(prev_crashes[:2]) < 1.20 and (cur_balance >= 6 or inventory):
+        await make_bet(6,'1.20')
+    elif random.randint(1,20) == 6:
+        await make_bet(0.20,'1.05')
+        
 
 @timer_async
 async def get_started():
